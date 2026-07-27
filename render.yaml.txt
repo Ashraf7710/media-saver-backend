@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: media-saver-backend
+    env: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "5000"
+      - key: FLASK_DEBUG
+        value: "false"
