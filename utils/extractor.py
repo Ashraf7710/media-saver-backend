@@ -1,5 +1,6 @@
 import yt_dlp
 import re
+import os
 from typing import Dict, List, Optional
 import logging
 
@@ -12,7 +13,6 @@ class MediaExtractor:
     }
 
     def __init__(self):
-        import os
         cookies_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "cookies.txt"
@@ -52,13 +52,6 @@ class MediaExtractor:
             {"name": "TikTok",       "domains": ["tiktok.com"]},
             {"name": "Twitter/X",    "domains": ["twitter.com", "x.com"]},
             {"name": "Facebook",     "domains": ["facebook.com"]},
-            {"name": "Snapchat",     "domains": ["snapchat.com"]},
-            {"name": "Reddit",       "domains": ["reddit.com"]},
-            {"name": "Pinterest",    "domains": ["pinterest.com"]},
-            {"name": "Vimeo",        "domains": ["vimeo.com"]},
-            {"name": "Dailymotion",  "domains": ["dailymotion.com"]},
-            {"name": "SoundCloud",   "domains": ["soundcloud.com"]},
-            {"name": "Twitch",       "domains": ["twitch.tv"]},
             {"name": "و 1800+ موقع", "domains": []},
         ]
 
@@ -122,7 +115,7 @@ class MediaExtractor:
         if platform == "youtube":
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["tv_embedded", "ios", "web_safari"],
+                    "player_client": ["default", "web", "android"],
                 }
             }
         elif platform == "instagram":
@@ -179,33 +172,40 @@ class MediaExtractor:
         if not formats:
             return []
 
-        qualities    = []
-        seen         = set()
-        best_audio   = self._find_best_audio(formats)
+        duration = info.get("duration", 0)
+        qualities = []
+        seen = set()
+        best_audio = self._find_best_audio(formats)
 
         for f in formats:
-            height  = f.get("height")
-            vcodec  = f.get("vcodec", "none")
-            acodec  = f.get("acodec", "none")
-            url     = f.get("url")
+            height = f.get("height")
+            vcodec = f.get("vcodec", "none")
+            acodec = f.get("acodec", "none")
+            url = f.get("url")
 
             if not url or not height or vcodec == "none":
                 continue
 
             quality_label = f"{height}p"
-            has_audio     = acodec != "none"
-            ext           = f.get("ext", "mp4")
-            key           = f"{quality_label}_{has_audio}_{ext}"
+            has_audio = acodec != "none"
+            ext = f.get("ext", "mp4")
+            key = f"{quality_label}_{has_audio}_{ext}"
 
             if key in seen:
                 continue
             seen.add(key)
 
+            filesize = f.get("filesize") or f.get("filesize_approx") or 0
+            if not filesize and duration:
+                tbr = f.get("tbr") or f.get("vbr") or 0
+                if tbr:
+                    filesize = int((tbr * 1000 / 8) * duration)
+
             q = {
                 "quality":   quality_label,
                 "url":       url,
                 "format":    ext,
-                "filesize":  f.get("filesize") or f.get("filesize_approx") or 0,
+                "filesize":  filesize,
                 "has_audio": has_audio,
                 "vcodec":    self._simplify_codec(vcodec),
                 "acodec":    self._simplify_codec(acodec) if has_audio else "none",
@@ -215,16 +215,22 @@ class MediaExtractor:
             }
 
             if not has_audio and best_audio:
-                q["audio_url"]      = best_audio["url"]
-                q["audio_format"]   = best_audio.get("ext", "m4a")
-                q["audio_filesize"] = best_audio.get("filesize") or 0
+                audio_size = best_audio.get("filesize") or best_audio.get("filesize_approx") or 0
+                if not audio_size and duration:
+                    abr = best_audio.get("abr") or best_audio.get("tbr") or 0
+                    if abr:
+                        audio_size = int((abr * 1000 / 8) * duration)
+
+                q["audio_url"] = best_audio["url"]
+                q["audio_format"] = best_audio.get("ext", "m4a")
+                q["audio_filesize"] = audio_size
 
             qualities.append(q)
 
-        final    = []
-        seen_h   = set()
-        merged   = [q for q in qualities if q["has_audio"]]
-        vo_only  = [q for q in qualities if not q["has_audio"]]
+        final = []
+        seen_h = set()
+        merged = [q for q in qualities if q["has_audio"]]
+        vo_only = [q for q in qualities if not q["has_audio"]]
 
         for q in merged:
             if q["quality"] not in seen_h:
@@ -240,13 +246,14 @@ class MediaExtractor:
 
     def _extract_audio(self, info: Dict) -> List[Dict]:
         formats = info.get("formats", [])
-        result  = []
-        seen    = set()
+        duration = info.get("duration", 0)
+        result = []
+        seen = set()
 
         for f in formats:
             vcodec = f.get("vcodec", "none")
             acodec = f.get("acodec", "none")
-            url    = f.get("url")
+            url = f.get("url")
 
             if vcodec != "none" or acodec == "none" or not url:
                 continue
@@ -264,11 +271,15 @@ class MediaExtractor:
                 continue
             seen.add(key)
 
+            filesize = f.get("filesize") or f.get("filesize_approx") or 0
+            if not filesize and duration and abr:
+                filesize = int((abr * 1000 / 8) * duration)
+
             result.append({
                 "quality":  label,
                 "url":      url,
                 "format":   ext,
-                "filesize": f.get("filesize") or f.get("filesize_approx") or 0,
+                "filesize": filesize,
                 "abr":      abr,
                 "acodec":   self._simplify_codec(acodec),
             })
