@@ -23,10 +23,9 @@ class MediaExtractor:
             "no_warnings": True,
             "nocheckcertificate": True,
             "ignoreerrors": False,
-            "socket_timeout": 10,  # ⚡ تقليل التايم أوت حتى لا يسبب WORKER TIMEOUT
-            "retries": 1,         # ⚡ محاولة واحدة لكل طلب لمنع التأخير
+            "socket_timeout": 15,
+            "retries": 2,
             "skip_download": True,
-            "format": "all",      # ✅ لا فلترة صيغ
             "http_headers": {
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -94,6 +93,11 @@ class MediaExtractor:
 
     def _clean_url(self, url: str) -> str:
         url = url.strip()
+
+        # فحص روابط البحث لمنع التعليق
+        if "youtube.com/results?" in url or "youtube.com/search" in url:
+            raise Exception("الرجاء إدخال رابط فيديو مباشر وليس رابط نتائج بحث")
+
         url = re.sub(
             r'youtube\.com/shorts/([a-zA-Z0-9_-]+)',
             r'youtube.com/watch?v=\1', url
@@ -131,17 +135,9 @@ class MediaExtractor:
             opts["cookiefile"] = self.cookies_path
 
         if platform == "youtube":
-            # البروكسي (إن وُجد)
             proxy_url = os.environ.get("YOUTUBE_PROXY")
             if proxy_url:
                 opts["proxy"] = proxy_url
-
-            # تقليل قائمة المشغلات إلى التركيز على السرعة والتجاوب
-            opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["ios", "mweb"],
-                }
-            }
         elif platform == "instagram":
             opts["http_headers"] = {
                 **self.base_opts["http_headers"],
