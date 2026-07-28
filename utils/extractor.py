@@ -60,8 +60,6 @@ class MediaExtractor:
         platform = self._detect_platform(url)
         opts = self._get_platform_opts(platform)
 
-        opts["format"] = "best"
-
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -114,19 +112,7 @@ class MediaExtractor:
 
     def _get_platform_opts(self, platform: str) -> Dict:
         opts = {**self.base_opts}
-        if platform == "youtube":
-            opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["tv", "web"],
-                    "player_skip": ["configs"],
-                }
-            }
-            opts["http_headers"] = {
-                **self.base_opts["http_headers"],
-                "X-Youtube-Client-Name": "1",
-                "X-Youtube-Client-Version": "2.20250101.01.00",
-            }
-        elif platform == "instagram":
+        if platform == "instagram":
             opts["http_headers"] = {
                 **self.base_opts["http_headers"],
                 "X-IG-App-ID": "936619743392459",
