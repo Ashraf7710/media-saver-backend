@@ -36,8 +36,9 @@ class MediaExtractor:
             },
         }
 
-        if os.path.exists(cookies_path):
-            self.base_opts["cookiefile"] = cookies_path
+        # cookies معطلة مؤقتاً للتجربة
+        # if os.path.exists(cookies_path):
+        #     self.base_opts["cookiefile"] = cookies_path
 
     def get_version(self) -> str:
         try:
@@ -115,8 +116,7 @@ class MediaExtractor:
         if platform == "youtube":
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["web", "android"],
-                    "player_skip": ["configs"]
+                    "player_client": ["mweb"],
                 }
             }
         elif platform == "instagram":
