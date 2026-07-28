@@ -59,6 +59,8 @@ class MediaExtractor:
         url = self._clean_url(url)
         platform = self._detect_platform(url)
         opts = self._get_platform_opts(platform)
+        opts["format"] = "bestvideo+bestaudio/best"
+        opts["youtube_include_dash_manifest"] = True
 
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
