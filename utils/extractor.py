@@ -112,13 +112,7 @@ class MediaExtractor:
 
     def _get_platform_opts(self, platform: str) -> Dict:
         opts = {**self.base_opts}
-        if platform == "youtube":
-            opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["default", "web", "android"],
-                }
-            }
-        elif platform == "instagram":
+        if platform == "instagram":
             opts["http_headers"] = {
                 **self.base_opts["http_headers"],
                 "X-IG-App-ID": "936619743392459",
@@ -126,29 +120,29 @@ class MediaExtractor:
         return opts
 
     def _build_result(self, info: Dict, platform: str) -> Dict:
-        title       = info.get("title", "Unknown")
-        thumbnail   = info.get("thumbnail", "")
-        duration    = info.get("duration", 0)
-        uploader    = info.get("uploader", "")
+        title = info.get("title", "Unknown")
+        thumbnail = info.get("thumbnail", "")
+        duration = info.get("duration", 0)
+        uploader = info.get("uploader", "")
         description = info.get("description", "")
 
-        qualities   = self._extract_qualities(info)
-        audio_only  = self._extract_audio(info)
+        qualities = self._extract_qualities(info)
+        audio_only = self._extract_audio(info)
 
         if not qualities:
             direct_url = info.get("url")
             if direct_url:
                 qualities = [{
-                    "quality":  "Default",
-                    "url":      direct_url,
-                    "format":   info.get("ext", "mp4"),
+                    "quality": "Default",
+                    "url": direct_url,
+                    "format": info.get("ext", "mp4"),
                     "filesize": info.get("filesize", 0),
                     "has_audio": True,
-                    "vcodec":   info.get("vcodec", "unknown"),
-                    "acodec":   info.get("acodec", "unknown"),
-                    "fps":      info.get("fps"),
-                    "height":   info.get("height", 0),
-                    "width":    info.get("width", 0),
+                    "vcodec": info.get("vcodec", "unknown"),
+                    "acodec": info.get("acodec", "unknown"),
+                    "fps": info.get("fps"),
+                    "height": info.get("height", 0),
+                    "width": info.get("width", 0),
                 }]
 
         if not qualities:
@@ -157,14 +151,14 @@ class MediaExtractor:
         qualities.sort(key=lambda q: self.QUALITY_ORDER.get(q["quality"], 99))
 
         return {
-            "title":       self._clean_title(title),
-            "thumbnail":   thumbnail,
-            "duration":    duration,
-            "platform":    platform.capitalize(),
-            "uploader":    uploader,
+            "title": self._clean_title(title),
+            "thumbnail": thumbnail,
+            "duration": duration,
+            "platform": platform.capitalize(),
+            "uploader": uploader,
             "description": description[:500] if description else "",
-            "qualities":   qualities,
-            "audio_only":  audio_only,
+            "qualities": qualities,
+            "audio_only": audio_only,
         }
 
     def _extract_qualities(self, info: Dict) -> List[Dict]:
@@ -202,16 +196,16 @@ class MediaExtractor:
                     filesize = int((tbr * 1000 / 8) * duration)
 
             q = {
-                "quality":   quality_label,
-                "url":       url,
-                "format":    ext,
-                "filesize":  filesize,
+                "quality": quality_label,
+                "url": url,
+                "format": ext,
+                "filesize": filesize,
                 "has_audio": has_audio,
-                "vcodec":    self._simplify_codec(vcodec),
-                "acodec":    self._simplify_codec(acodec) if has_audio else "none",
-                "fps":       f.get("fps"),
-                "height":    height,
-                "width":     f.get("width"),
+                "vcodec": self._simplify_codec(vcodec),
+                "acodec": self._simplify_codec(acodec) if has_audio else "none",
+                "fps": f.get("fps"),
+                "height": height,
+                "width": f.get("width"),
             }
 
             if not has_audio and best_audio:
@@ -261,10 +255,14 @@ class MediaExtractor:
             abr = f.get("abr") or f.get("tbr") or 0
             ext = f.get("ext", "m4a")
 
-            if abr >= 256:   label = "High (256kbps)"
-            elif abr >= 128: label = "Medium (128kbps)"
-            elif abr >= 64:  label = "Low (64kbps)"
-            else:            label = f"Audio ({int(abr)}kbps)" if abr else "Audio"
+            if abr >= 256:
+                label = "High (256kbps)"
+            elif abr >= 128:
+                label = "Medium (128kbps)"
+            elif abr >= 64:
+                label = "Low (64kbps)"
+            else:
+                label = f"Audio ({int(abr)}kbps)" if abr else "Audio"
 
             key = f"{label}_{ext}"
             if key in seen:
@@ -276,12 +274,12 @@ class MediaExtractor:
                 filesize = int((abr * 1000 / 8) * duration)
 
             result.append({
-                "quality":  label,
-                "url":      url,
-                "format":   ext,
+                "quality": label,
+                "url": url,
+                "format": ext,
                 "filesize": filesize,
-                "abr":      abr,
-                "acodec":   self._simplify_codec(acodec),
+                "abr": abr,
+                "acodec": self._simplify_codec(acodec),
             })
 
         result.sort(key=lambda x: x.get("abr", 0), reverse=True)
@@ -309,9 +307,9 @@ class MediaExtractor:
         return {
             "avc1": "H.264", "h264": "H.264",
             "hev1": "H.265", "hevc": "H.265",
-            "vp9":  "VP9",   "vp8":  "VP8",
-            "av01": "AV1",   "mp4a": "AAC",
-            "opus": "Opus",  "vorbis": "Vorbis",
+            "vp9": "VP9", "vp8": "VP8",
+            "av01": "AV1", "mp4a": "AAC",
+            "opus": "Opus", "vorbis": "Vorbis",
         }.get(codec, codec.upper())
 
     def _clean_title(self, title: str) -> str:
@@ -323,14 +321,14 @@ class MediaExtractor:
         error_lower = error.lower()
         translations = {
             "video unavailable": "الفيديو غير متاح",
-            "private video":     "هذا فيديو خاص",
-            "sign in":           "يتطلب تسجيل الدخول",
-            "age-restricted":    "محتوى مقيد بالعمر",
-            "copyright":         "تم إزالته بسبب حقوق النشر",
-            "not found":         "لم يتم العثور على المحتوى",
-            "geo restricted":    "غير متاح في منطقتك",
-            "live stream":       "البث المباشر غير مدعوم",
-            "unsupported url":   "هذا الرابط غير مدعوم",
+            "private video": "هذا فيديو خاص",
+            "sign in": "يتطلب تسجيل الدخول",
+            "age-restricted": "محتوى مقيد بالعمر",
+            "copyright": "تم إزالته بسبب حقوق النشر",
+            "not found": "لم يتم العثور على المحتوى",
+            "geo restricted": "غير متاح في منطقتك",
+            "live stream": "البث المباشر غير مدعوم",
+            "unsupported url": "هذا الرابط غير مدعوم",
         }
         for key, translation in translations.items():
             if key in error_lower:
