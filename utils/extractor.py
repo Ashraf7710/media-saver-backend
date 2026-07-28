@@ -13,7 +13,7 @@ class MediaExtractor:
     }
 
     def __init__(self):
-        cookies_path = os.path.join(
+        self.cookies_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "cookies.txt"
         )
@@ -26,6 +26,7 @@ class MediaExtractor:
             "socket_timeout": 30,
             "retries": 3,
             "skip_download": True,
+            "format": "all",  # ✅ مهم - لا فلترة صيغ
             "http_headers": {
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -35,9 +36,6 @@ class MediaExtractor:
                 "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
             },
         }
-
-        if os.path.exists(cookies_path):
-            self.base_opts["cookiefile"] = cookies_path
 
     def get_version(self) -> str:
         try:
@@ -58,26 +56,41 @@ class MediaExtractor:
     def extract(self, url: str, preferred_quality: str = "best") -> Dict:
         url = self._clean_url(url)
         platform = self._detect_platform(url)
-        opts = self._get_platform_opts(platform)
 
+        # المحاولة 1: مع cookies
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+            opts = self._get_platform_opts(platform, use_cookies=True)
+            return self._do_extract(url, opts, platform)
+        except Exception as e:
+            error_msg = str(e).lower()
+            logger.warning(f"First attempt failed: {error_msg[:200]}")
 
-            if not info:
-                raise Exception("لم يتم العثور على محتوى")
+            # المحاولة 2: بدون cookies (للـ YouTube فقط)
+            if platform == "youtube":
+                try:
+                    logger.info("Retrying without cookies...")
+                    opts = self._get_platform_opts(platform, use_cookies=False)
+                    return self._do_extract(url, opts, platform)
+                except Exception as e2:
+                    raise Exception(self._translate_error(str(e2)))
 
-            if info.get("_type") == "playlist":
-                entries = info.get("entries", [])
-                if entries:
-                    info = entries[0]
-                else:
-                    raise Exception("القائمة فارغة")
-
-            return self._build_result(info, platform)
-
-        except yt_dlp.utils.DownloadError as e:
             raise Exception(self._translate_error(str(e)))
+
+    def _do_extract(self, url: str, opts: Dict, platform: str) -> Dict:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        if not info:
+            raise Exception("لم يتم العثور على محتوى")
+
+        if info.get("_type") == "playlist":
+            entries = info.get("entries", [])
+            if entries:
+                info = entries[0]
+            else:
+                raise Exception("القائمة فارغة")
+
+        return self._build_result(info, platform)
 
     def _clean_url(self, url: str) -> str:
         url = url.strip()
@@ -110,12 +123,25 @@ class MediaExtractor:
                 return platform
         return "other"
 
-    def _get_platform_opts(self, platform: str) -> Dict:
+    def _get_platform_opts(self, platform: str, use_cookies: bool = True) -> Dict:
         opts = {**self.base_opts}
+
+        # إضافة cookies إذا مطلوب
+        if use_cookies and os.path.exists(self.cookies_path):
+            opts["cookiefile"] = self.cookies_path
+
         if platform == "youtube":
+            # البروكسي (إن وُجد)
             proxy_url = os.environ.get("YOUTUBE_PROXY")
             if proxy_url:
                 opts["proxy"] = proxy_url
+
+            # player clients مختلفة
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["ios", "mweb", "android", "tv_embedded"],
+                }
+            }
         elif platform == "instagram":
             opts["http_headers"] = {
                 **self.base_opts["http_headers"],
