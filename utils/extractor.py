@@ -112,7 +112,14 @@ class MediaExtractor:
 
     def _get_platform_opts(self, platform: str) -> Dict:
         opts = {**self.base_opts}
-        if platform == "instagram":
+        if platform == "youtube":
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["web", "android"],
+                    "player_skip": ["configs"]
+                }
+            }
+        elif platform == "instagram":
             opts["http_headers"] = {
                 **self.base_opts["http_headers"],
                 "X-IG-App-ID": "936619743392459",
