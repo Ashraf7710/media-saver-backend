@@ -60,6 +60,8 @@ class MediaExtractor:
         platform = self._detect_platform(url)
         opts = self._get_platform_opts(platform)
 
+        opts["format"] = "best"
+
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
