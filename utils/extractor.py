@@ -23,10 +23,10 @@ class MediaExtractor:
             "no_warnings": True,
             "nocheckcertificate": True,
             "ignoreerrors": False,
-            "socket_timeout": 30,
-            "retries": 3,
+            "socket_timeout": 10,  # ⚡ تقليل التايم أوت حتى لا يسبب WORKER TIMEOUT
+            "retries": 1,         # ⚡ محاولة واحدة لكل طلب لمنع التأخير
             "skip_download": True,
-            "format": "all",  # ✅ مهم - لا فلترة صيغ
+            "format": "all",      # ✅ لا فلترة صيغ
             "http_headers": {
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -136,10 +136,10 @@ class MediaExtractor:
             if proxy_url:
                 opts["proxy"] = proxy_url
 
-            # player clients مختلفة
+            # تقليل قائمة المشغلات إلى التركيز على السرعة والتجاوب
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["ios", "mweb", "android", "tv_embedded"],
+                    "player_client": ["ios", "mweb"],
                 }
             }
         elif platform == "instagram":
