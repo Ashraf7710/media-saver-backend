@@ -56,21 +56,23 @@ class MediaExtractor:
     def extract(self, url: str, preferred_quality: str = "best") -> Dict:
         url = self._clean_url(url)
         platform = self._detect_platform(url)
-def _get_platform_opts(self, platform: str) -> Dict:
-    opts = {**self.base_opts}
-    if platform == "youtube":
-        opts["extractor_args"] = {
-            "youtube": {
-                "player_client": ["android_vr", "web_safari", "web_embedded"],
-                "player_skip": ["webpage", "configs"]
-            }
-        }
-    elif platform == "instagram":
-        opts["http_headers"] = {
-            **self.base_opts["http_headers"],
-            "X-IG-App-ID": "936619743392459",
-        }
-    return opts
+        opts = self._get_platform_opts(platform)
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+
+            if not info:
+                raise Exception("لم يتم العثور على محتوى")
+
+            if info.get("_type") == "playlist":
+                entries = info.get("entries", [])
+                if entries:
+                    info = entries[0]
+                else:
+                    raise Exception("القائمة فارغة")
+
+            return self._build_result(info, platform)
 
         except yt_dlp.utils.DownloadError as e:
             raise Exception(self._translate_error(str(e)))
@@ -110,7 +112,10 @@ def _get_platform_opts(self, platform: str) -> Dict:
         opts = {**self.base_opts}
         if platform == "youtube":
             opts["extractor_args"] = {
-                "youtube": {"player_client": ["android", "web"]}
+                "youtube": {
+                    "player_client": ["android_vr", "web_safari", "web_embedded"],
+                    "player_skip": ["webpage", "configs"]
+                }
             }
         elif platform == "instagram":
             opts["http_headers"] = {
@@ -208,7 +213,6 @@ def _get_platform_opts(self, platform: str) -> Dict:
 
             qualities.append(q)
 
-        # تفضيل المدمج لكل جودة
         final    = []
         seen_h   = set()
         merged   = [q for q in qualities if q["has_audio"]]
