@@ -361,7 +361,7 @@ class MediaExtractor:
             "not found": "لم يتم العثور على المحتوى",
             "geo restricted": "غير متاح في منطقتك",
             "live stream": "البث المباشر غير مدعوم",
-            "unsupported url": "هذا الرابط غير مدعوم",
+            "unsupported url": "هذا رابط غير مدعوم",
         }
         for key, translation in translations.items():
             if key in error_lower:
