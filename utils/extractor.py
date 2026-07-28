@@ -12,6 +12,12 @@ class MediaExtractor:
     }
 
     def __init__(self):
+        import os
+        cookies_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "cookies.txt"
+        )
+
         self.base_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -29,6 +35,9 @@ class MediaExtractor:
                 "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
             },
         }
+
+        if os.path.exists(cookies_path):
+            self.base_opts["cookiefile"] = cookies_path
 
     def get_version(self) -> str:
         try:
