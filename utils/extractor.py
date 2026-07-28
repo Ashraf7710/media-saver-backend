@@ -110,6 +110,19 @@ class MediaExtractor:
                 return platform
         return "other"
 
+    def _get_platform_opts(self, platform: str) -> Dict:
+        opts = {**self.base_opts}
+        if platform == "youtube":
+            proxy_url = os.environ.get("YOUTUBE_PROXY")
+            if proxy_url:
+                opts["proxy"] = proxy_url
+        elif platform == "instagram":
+            opts["http_headers"] = {
+                **self.base_opts["http_headers"],
+                "X-IG-App-ID": "936619743392459",
+            }
+        return opts
+
     def _build_result(self, info: Dict, platform: str) -> Dict:
         title = info.get("title", "Unknown")
         thumbnail = info.get("thumbnail", "")
