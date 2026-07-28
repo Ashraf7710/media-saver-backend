@@ -36,9 +36,8 @@ class MediaExtractor:
             },
         }
 
-        # cookies معطلة مؤقتاً للتجربة
-        # if os.path.exists(cookies_path):
-        #     self.base_opts["cookiefile"] = cookies_path
+        if os.path.exists(cookies_path):
+            self.base_opts["cookiefile"] = cookies_path
 
     def get_version(self) -> str:
         try:
@@ -116,8 +115,14 @@ class MediaExtractor:
         if platform == "youtube":
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["mweb"],
+                    "player_client": ["tv", "web"],
+                    "player_skip": ["configs"],
                 }
+            }
+            opts["http_headers"] = {
+                **self.base_opts["http_headers"],
+                "X-Youtube-Client-Name": "1",
+                "X-Youtube-Client-Version": "2.20250101.01.00",
             }
         elif platform == "instagram":
             opts["http_headers"] = {
