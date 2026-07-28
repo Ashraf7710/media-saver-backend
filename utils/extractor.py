@@ -122,10 +122,9 @@ class MediaExtractor:
         if platform == "youtube":
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["mweb", "ios", "android"],
+                    "player_client": ["tv_embedded", "ios", "web_safari"],
                 }
             }
-            opts["format"] = "best"
         elif platform == "instagram":
             opts["http_headers"] = {
                 **self.base_opts["http_headers"],
