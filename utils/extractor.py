@@ -428,6 +428,11 @@ class MediaExtractor:
             "opus": "Opus", "vorbis": "Vorbis",
         }.get(codec, codec.upper())
 
+    def _clean_title(self, title: str) -> str:
+        title = re.sub(r'[<>:"/\\|?*]', '', title)
+        title = re.sub(r'\s+', ' ', title).strip()
+        return title[:200]
+
     def _translate_error(self, error: str) -> str:
         error_lower = error.lower()
         translations = {
