@@ -52,36 +52,35 @@ class MediaExtractor:
             {"name": "و 1800+ موقع", "domains": []},
         ]
 
-def extract(self, url: str, preferred_quality: str = "best",
-            start_time: str = None, end_time: str = None) -> Dict:
-    url = self._clean_url(url)
-    platform = self._detect_platform(url)
+    def extract(self, url: str, preferred_quality: str = "best",
+                start_time: str = None, end_time: str = None) -> Dict:
+        url = self._clean_url(url)
+        platform = self._detect_platform(url)
 
-    try:
-        opts = self._get_platform_opts(platform, use_cookies=True)
-        
-        # ✂️ إضافة قص الفيديو
-        if start_time or end_time:
-            opts["download_ranges"] = self._build_ranges(start_time, end_time)
-            opts["force_keyframes_at_cuts"] = True
-        
-        return self._do_extract(url, opts, platform)
-    except Exception as e:
-        error_msg = str(e).lower()
-        logger.warning(f"First attempt failed: {error_msg[:200]}")
+        try:
+            opts = self._get_platform_opts(platform, use_cookies=True)
 
-        if platform == "youtube":
-            try:
-                logger.info("Retrying without cookies...")
-                opts = self._get_platform_opts(platform, use_cookies=False)
-                if start_time or end_time:
-                    opts["download_ranges"] = self._build_ranges(start_time, end_time)
-                    opts["force_keyframes_at_cuts"] = True
-                return self._do_extract(url, opts, platform)
-            except Exception as e2:
-                raise Exception(self._translate_error(str(e2)))
+            if start_time or end_time:
+                opts["download_ranges"] = self._build_ranges(start_time, end_time)
+                opts["force_keyframes_at_cuts"] = True
 
-        raise Exception(self._translate_error(str(e)))
+            return self._do_extract(url, opts, platform)
+        except Exception as e:
+            error_msg = str(e).lower()
+            logger.warning(f"First attempt failed: {error_msg[:200]}")
+
+            if platform == "youtube":
+                try:
+                    logger.info("Retrying without cookies...")
+                    opts = self._get_platform_opts(platform, use_cookies=False)
+                    if start_time or end_time:
+                        opts["download_ranges"] = self._build_ranges(start_time, end_time)
+                        opts["force_keyframes_at_cuts"] = True
+                    return self._do_extract(url, opts, platform)
+                except Exception as e2:
+                    raise Exception(self._translate_error(str(e2)))
+
+            raise Exception(self._translate_error(str(e)))
 
     def _do_extract(self, url: str, opts: Dict, platform: str) -> Dict:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -102,7 +101,6 @@ def extract(self, url: str, preferred_quality: str = "best",
     def _clean_url(self, url: str) -> str:
         url = url.strip()
 
-        # فحص روابط البحث لمنع التعليق
         if "youtube.com/results?" in url or "youtube.com/search" in url:
             raise Exception("الرجاء إدخال رابط فيديو مباشر وليس رابط نتائج بحث")
 
@@ -141,7 +139,6 @@ def extract(self, url: str, preferred_quality: str = "best",
         if use_cookies and os.path.exists(self.cookies_path):
             opts["cookiefile"] = self.cookies_path
 
-        # ✅ فرض H.264 لجميع المنصات (لتوافق MediaMuxer)
         opts["format"] = "best[vcodec^=avc]/best[ext=mp4]/best"
 
         if platform == "youtube":
@@ -169,28 +166,26 @@ def extract(self, url: str, preferred_quality: str = "best",
         audio_only = self._extract_audio(info)
         subtitles = self._extract_subtitles(info)
 
-        # إذا Instagram/TikTok/Facebook: استخدم الرابط المباشر دائماً
         direct_url = info.get("url")
         if direct_url and platform in ("instagram", "tiktok", "facebook", "twitter"):
             has_audio = info.get("acodec", "none") != "none"
             height = info.get("height", 0)
             width = info.get("width", 0)
-            
+
             quality_label = f"{height}p" if height else "HD"
-            
+
             filesize = info.get("filesize") or info.get("filesize_approx") or 0
             if not filesize and duration:
                 tbr = info.get("tbr") or 0
                 if tbr:
                     filesize = int((tbr * 1000 / 8) * duration)
-            
-            # استبدال قائمة الجودات بالفيديو المباشر
+
             qualities = [{
                 "quality": quality_label,
                 "url": direct_url,
                 "format": info.get("ext", "mp4"),
                 "filesize": filesize,
-                "has_audio": True,  # عادة الفيديو المدمج يحتوي صوت
+                "has_audio": True,
                 "vcodec": info.get("vcodec", "h264"),
                 "acodec": info.get("acodec", "aac"),
                 "fps": info.get("fps"),
@@ -218,8 +213,6 @@ def extract(self, url: str, preferred_quality: str = "best",
             raise Exception("لم يتم العثور على روابط تحميل")
 
         qualities.sort(key=lambda q: self.QUALITY_ORDER.get(q["quality"], 99))
-                # استخراج الترجمات
-        subtitles = self._extract_subtitles(info)
 
         return {
             "title": self._clean_title(title),
@@ -256,13 +249,10 @@ def extract(self, url: str, preferred_quality: str = "best",
 
                 if ext in ("mhtml", "html"):
                     continue
-                
-                # تجاهل الصوت فقط (لا فيديو ولا صورة)
+
                 if vcodec == "none" and acodec != "none":
                     continue
-                
-                # قبول إذا كان فيديو أو غير معروف
-                # (بعض المنصات ترجع vcodec="none" بس الفيديو موجود)
+
                 is_video_format = (
                     vcodec != "none" or
                     ext in ("mp4", "webm", "mov", "mkv", "flv", "3gp") or
@@ -272,15 +262,12 @@ def extract(self, url: str, preferred_quality: str = "best",
                 if not is_video_format:
                     continue
 
-                # تجاهل الصيغ بدون height (مش فيديو حقيقي)
                 if not height or height < 100:
                     continue
-                
+
                 quality_label = f"{height}p"
-                # قبول الجودات المعيارية فقط
                 standard_heights = [144, 240, 360, 480, 720, 1080, 1440, 2160, 4320]
                 closest_height = min(standard_heights, key=lambda x: abs(x - height))
-                # إذا الفرق كبير، تجاهل
                 if abs(closest_height - height) > 100:
                     continue
                 quality_label = f"{closest_height}p"
@@ -327,7 +314,6 @@ def extract(self, url: str, preferred_quality: str = "best",
                 logger.warning(f"Skipping format due to error: {ex}")
                 continue
 
-        # تفضيل H.264 على VP9 (لتوافق MediaMuxer)
         def codec_priority(q):
             v = q.get("vcodec", "").lower()
             if "h.264" in v or "avc" in v or "h264" in v:
@@ -371,8 +357,7 @@ def extract(self, url: str, preferred_quality: str = "best",
 
             if vcodec != "none" or acodec == "none" or not url:
                 continue
-            
-            # تجاهل ملفات الفيديو حتى لو vcodec=none
+
             if ext in ("mp4", "webm", "mov", "mkv"):
                 continue
 
@@ -441,32 +426,7 @@ def extract(self, url: str, preferred_quality: str = "best",
         title = re.sub(r'\s+', ' ', title).strip()
         return title[:200]
 
-    def _build_ranges(self, start_time: str, end_time: str):
-    """بناء نطاق القص لـ yt-dlp"""
-    def time_to_seconds(t):
-        if not t:
-            return None
-        parts = t.split(":")
-        if len(parts) == 3:
-            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
-        elif len(parts) == 2:
-            return int(parts[0]) * 60 + float(parts[1])
-        return float(t)
-    
-    start = time_to_seconds(start_time) or 0
-    end = time_to_seconds(end_time)
-    
-    def ranges_func(info_dict, ydl):
-        return [{
-            "start_time": start,
-            "end_time": end,
-            "title": "clip"
-        }]
-    
-    return ranges_func
-
     def _build_ranges(self, start_time, end_time):
-        """بناء نطاق القص لـ yt-dlp"""
         def time_to_seconds(t):
             if not t:
                 return None
@@ -508,7 +468,6 @@ def extract(self, url: str, preferred_quality: str = "best",
         return f"خطأ: {error[:200]}"
 
     def _extract_subtitles(self, info: Dict) -> List[Dict]:
-        """استخراج الترجمات المتاحة"""
         result = []
         seen_langs = set()
 
