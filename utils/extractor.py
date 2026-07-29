@@ -143,6 +143,8 @@ class MediaExtractor:
                 **self.base_opts["http_headers"],
                 "X-IG-App-ID": "936619743392459",
             }
+        elif platform == "tiktok":
+            opts["format"] = "best[format_id*=nowatermark]/bestvideo+bestaudio/best"
         return opts
 
     def _build_result(self, info: Dict, platform: str) -> Dict:
@@ -203,7 +205,11 @@ class MediaExtractor:
             acodec = f.get("acodec", "none")
             url = f.get("url")
 
-            if not url or vcodec == "none":
+            if not url:
+                continue
+            if vcodec == "none" or vcodec is None:
+                continue
+            if ext in ("mhtml", "html"):
                 continue
 
             if not height:
