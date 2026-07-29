@@ -157,6 +157,35 @@ class MediaExtractor:
         qualities = self._extract_qualities(info)
         audio_only = self._extract_audio(info)
 
+        # إذا Instagram/TikTok/Facebook: استخدم الرابط المباشر دائماً
+        direct_url = info.get("url")
+        if direct_url and platform in ("instagram", "tiktok", "facebook", "twitter"):
+            has_audio = info.get("acodec", "none") != "none"
+            height = info.get("height", 0)
+            width = info.get("width", 0)
+            
+            quality_label = f"{height}p" if height else "HD"
+            
+            filesize = info.get("filesize") or info.get("filesize_approx") or 0
+            if not filesize and duration:
+                tbr = info.get("tbr") or 0
+                if tbr:
+                    filesize = int((tbr * 1000 / 8) * duration)
+            
+            # استبدال قائمة الجودات بالفيديو المباشر
+            qualities = [{
+                "quality": quality_label,
+                "url": direct_url,
+                "format": info.get("ext", "mp4"),
+                "filesize": filesize,
+                "has_audio": True,  # عادة الفيديو المدمج يحتوي صوت
+                "vcodec": info.get("vcodec", "h264"),
+                "acodec": info.get("acodec", "aac"),
+                "fps": info.get("fps"),
+                "height": height,
+                "width": width,
+            }]
+
         if not qualities:
             direct_url = info.get("url")
             if direct_url:
