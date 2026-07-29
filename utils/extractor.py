@@ -312,6 +312,19 @@ class MediaExtractor:
                 logger.warning(f"Skipping format due to error: {ex}")
                 continue
 
+        # تفضيل H.264 على VP9 (لتوافق MediaMuxer)
+        def codec_priority(q):
+            v = q.get("vcodec", "").lower()
+            if "h.264" in v or "avc" in v or "h264" in v:
+                return 0
+            if "h.265" in v or "hevc" in v:
+                return 1
+            if "vp9" in v or "vp09" in v:
+                return 2
+            return 3
+
+        qualities.sort(key=codec_priority)
+
         final = []
         seen_h = set()
         merged = [q for q in qualities if q["has_audio"]]
