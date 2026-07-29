@@ -200,61 +200,65 @@ class MediaExtractor:
         best_audio = self._find_best_audio(formats)
 
         for f in formats:
-            height = f.get("height")
-            vcodec = f.get("vcodec", "none")
-            acodec = f.get("acodec", "none")
-            url = f.get("url")
+            try:
+                url = f.get("url")
+                if not url:
+                    continue
 
-            if not url:
+                vcodec = f.get("vcodec") or "none"
+                acodec = f.get("acodec") or "none"
+                ext = f.get("ext") or "mp4"
+                height = f.get("height")
+
+                if vcodec == "none":
+                    continue
+                if not height:
+                    continue
+                if ext in ("mhtml", "html"):
+                    continue
+
+                quality_label = f"{height}p"
+                has_audio = acodec != "none"
+                key = f"{quality_label}_{has_audio}_{ext}"
+
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                filesize = f.get("filesize") or f.get("filesize_approx") or 0
+                if not filesize and duration:
+                    tbr = f.get("tbr") or f.get("vbr") or 0
+                    if tbr:
+                        filesize = int((tbr * 1000 / 8) * duration)
+
+                q = {
+                    "quality": quality_label,
+                    "url": url,
+                    "format": ext,
+                    "filesize": filesize,
+                    "has_audio": has_audio,
+                    "vcodec": self._simplify_codec(vcodec),
+                    "acodec": self._simplify_codec(acodec) if has_audio else "none",
+                    "fps": f.get("fps"),
+                    "height": height,
+                    "width": f.get("width"),
+                }
+
+                if not has_audio and best_audio:
+                    audio_size = best_audio.get("filesize") or best_audio.get("filesize_approx") or 0
+                    if not audio_size and duration:
+                        abr = best_audio.get("abr") or best_audio.get("tbr") or 0
+                        if abr:
+                            audio_size = int((abr * 1000 / 8) * duration)
+
+                    q["audio_url"] = best_audio["url"]
+                    q["audio_format"] = best_audio.get("ext", "m4a")
+                    q["audio_filesize"] = audio_size
+
+                qualities.append(q)
+            except Exception as ex:
+                logger.warning(f"Skipping format due to error: {ex}")
                 continue
-            if vcodec == "none" or vcodec is None:
-                continue
-            if ext in ("mhtml", "html"):
-                continue
-
-            if not height:
-                continue
-
-            quality_label = f"{height}p"
-            has_audio = acodec != "none"
-            ext = f.get("ext", "mp4")
-            key = f"{quality_label}_{has_audio}_{ext}"
-
-            if key in seen:
-                continue
-            seen.add(key)
-
-            filesize = f.get("filesize") or f.get("filesize_approx") or 0
-            if not filesize and duration:
-                tbr = f.get("tbr") or f.get("vbr") or 0
-                if tbr:
-                    filesize = int((tbr * 1000 / 8) * duration)
-
-            q = {
-                "quality": quality_label,
-                "url": url,
-                "format": ext,
-                "filesize": filesize,
-                "has_audio": has_audio,
-                "vcodec": self._simplify_codec(vcodec),
-                "acodec": self._simplify_codec(acodec) if has_audio else "none",
-                "fps": f.get("fps"),
-                "height": height,
-                "width": f.get("width"),
-            }
-
-            if not has_audio and best_audio:
-                audio_size = best_audio.get("filesize") or best_audio.get("filesize_approx") or 0
-                if not audio_size and duration:
-                    abr = best_audio.get("abr") or best_audio.get("tbr") or 0
-                    if abr:
-                        audio_size = int((abr * 1000 / 8) * duration)
-
-                q["audio_url"] = best_audio["url"]
-                q["audio_format"] = best_audio.get("ext", "m4a")
-                q["audio_filesize"] = audio_size
-
-            qualities.append(q)
 
         final = []
         seen_h = set()
