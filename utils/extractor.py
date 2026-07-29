@@ -143,6 +143,8 @@ class MediaExtractor:
                 **self.base_opts["http_headers"],
                 "X-IG-App-ID": "936619743392459",
             }
+            opts["format"] = "best[vcodec^=avc]/best[ext=mp4]/best"
+
         elif platform == "tiktok":
             opts["format"] = "best[format_id*=nowatermark]/bestvideo+bestaudio/best"
         return opts
@@ -245,11 +247,7 @@ class MediaExtractor:
                 # تجاهل الصوت فقط (لا فيديو ولا صورة)
                 if vcodec == "none" and acodec != "none":
                     continue
-                # فلترة: H.264 فقط (لتوافق MediaMuxer على Android)
-                vcodec_lower = vcodec.lower()
-                is_h264 = "avc" in vcodec_lower or "h264" in vcodec_lower or "h.264" in vcodec_lower
-                if vcodec != "none" and not is_h264:
-                    continue                
+                
                 # قبول إذا كان فيديو أو غير معروف
                 # (بعض المنصات ترجع vcodec="none" بس الفيديو موجود)
                 is_video_format = (
