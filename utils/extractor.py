@@ -130,9 +130,11 @@ class MediaExtractor:
     def _get_platform_opts(self, platform: str, use_cookies: bool = True) -> Dict:
         opts = {**self.base_opts}
 
-        # إضافة cookies إذا مطلوب
         if use_cookies and os.path.exists(self.cookies_path):
             opts["cookiefile"] = self.cookies_path
+
+        # ✅ فرض H.264 لجميع المنصات (لتوافق MediaMuxer)
+        opts["format"] = "best[vcodec^=avc]/best[ext=mp4]/best"
 
         if platform == "youtube":
             proxy_url = os.environ.get("YOUTUBE_PROXY")
@@ -143,10 +145,9 @@ class MediaExtractor:
                 **self.base_opts["http_headers"],
                 "X-IG-App-ID": "936619743392459",
             }
-            opts["format"] = "best[vcodec^=avc]/best[ext=mp4]/best"
-
         elif platform == "tiktok":
-            opts["format"] = "best[format_id*=nowatermark]/bestvideo+bestaudio/best"
+            opts["format"] = "best[format_id*=nowatermark]/best[vcodec^=avc]/best[ext=mp4]/best"
+
         return opts
 
     def _build_result(self, info: Dict, platform: str) -> Dict:
