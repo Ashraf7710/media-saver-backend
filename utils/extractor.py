@@ -239,9 +239,22 @@ class MediaExtractor:
                 ext = f.get("ext") or "mp4"
                 height = f.get("height")
 
-                if vcodec == "none":
-                    continue
                 if ext in ("mhtml", "html"):
+                    continue
+                
+                # تجاهل الصوت فقط (لا فيديو ولا صورة)
+                if vcodec == "none" and acodec != "none":
+                    continue
+                
+                # قبول إذا كان فيديو أو غير معروف
+                # (بعض المنصات ترجع vcodec="none" بس الفيديو موجود)
+                is_video_format = (
+                    vcodec != "none" or
+                    ext in ("mp4", "webm", "mov", "mkv", "flv", "3gp") or
+                    f.get("width") or
+                    f.get("height")
+                )
+                if not is_video_format:
                     continue
 
                 if height:
