@@ -257,10 +257,18 @@ class MediaExtractor:
                 if not is_video_format:
                     continue
 
-                if height:
-                    quality_label = f"{height}p"
-                else:
-                    quality_label = f.get("format_note") or f.get("format_id") or "Default"
+                # تجاهل الصيغ بدون height (مش فيديو حقيقي)
+                if not height or height < 100:
+                    continue
+                
+                quality_label = f"{height}p"
+                # قبول الجودات المعيارية فقط
+                standard_heights = [144, 240, 360, 480, 720, 1080, 1440, 2160, 4320]
+                closest_height = min(standard_heights, key=lambda x: abs(x - height))
+                # إذا الفرق كبير، تجاهل
+                if abs(closest_height - height) > 100:
+                    continue
+                quality_label = f"{closest_height}p"
 
                 has_audio = acodec != "none"
                 key = f"{quality_label}_{has_audio}_{ext}"
