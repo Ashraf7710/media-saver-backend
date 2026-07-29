@@ -52,28 +52,36 @@ class MediaExtractor:
             {"name": "و 1800+ موقع", "domains": []},
         ]
 
-    def extract(self, url: str, preferred_quality: str = "best") -> Dict:
-        url = self._clean_url(url)
-        platform = self._detect_platform(url)
+def extract(self, url: str, preferred_quality: str = "best",
+            start_time: str = None, end_time: str = None) -> Dict:
+    url = self._clean_url(url)
+    platform = self._detect_platform(url)
 
-        # المحاولة 1: مع cookies
-        try:
-            opts = self._get_platform_opts(platform, use_cookies=True)
-            return self._do_extract(url, opts, platform)
-        except Exception as e:
-            error_msg = str(e).lower()
-            logger.warning(f"First attempt failed: {error_msg[:200]}")
+    try:
+        opts = self._get_platform_opts(platform, use_cookies=True)
+        
+        # ✂️ إضافة قص الفيديو
+        if start_time or end_time:
+            opts["download_ranges"] = self._build_ranges(start_time, end_time)
+            opts["force_keyframes_at_cuts"] = True
+        
+        return self._do_extract(url, opts, platform)
+    except Exception as e:
+        error_msg = str(e).lower()
+        logger.warning(f"First attempt failed: {error_msg[:200]}")
 
-            # المحاولة 2: بدون cookies (للـ YouTube فقط)
-            if platform == "youtube":
-                try:
-                    logger.info("Retrying without cookies...")
-                    opts = self._get_platform_opts(platform, use_cookies=False)
-                    return self._do_extract(url, opts, platform)
-                except Exception as e2:
-                    raise Exception(self._translate_error(str(e2)))
+        if platform == "youtube":
+            try:
+                logger.info("Retrying without cookies...")
+                opts = self._get_platform_opts(platform, use_cookies=False)
+                if start_time or end_time:
+                    opts["download_ranges"] = self._build_ranges(start_time, end_time)
+                    opts["force_keyframes_at_cuts"] = True
+                return self._do_extract(url, opts, platform)
+            except Exception as e2:
+                raise Exception(self._translate_error(str(e2)))
 
-            raise Exception(self._translate_error(str(e)))
+        raise Exception(self._translate_error(str(e)))
 
     def _do_extract(self, url: str, opts: Dict, platform: str) -> Dict:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -432,6 +440,54 @@ class MediaExtractor:
         title = re.sub(r'[<>:"/\\|?*]', '', title)
         title = re.sub(r'\s+', ' ', title).strip()
         return title[:200]
+
+    def _build_ranges(self, start_time: str, end_time: str):
+    """بناء نطاق القص لـ yt-dlp"""
+    def time_to_seconds(t):
+        if not t:
+            return None
+        parts = t.split(":")
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        elif len(parts) == 2:
+            return int(parts[0]) * 60 + float(parts[1])
+        return float(t)
+    
+    start = time_to_seconds(start_time) or 0
+    end = time_to_seconds(end_time)
+    
+    def ranges_func(info_dict, ydl):
+        return [{
+            "start_time": start,
+            "end_time": end,
+            "title": "clip"
+        }]
+    
+    return ranges_func
+
+    def _build_ranges(self, start_time, end_time):
+        """بناء نطاق القص لـ yt-dlp"""
+        def time_to_seconds(t):
+            if not t:
+                return None
+            parts = str(t).split(":")
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2:
+                return int(parts[0]) * 60 + float(parts[1])
+            return float(t)
+
+        start = time_to_seconds(start_time) or 0
+        end = time_to_seconds(end_time)
+
+        def ranges_func(info_dict, ydl):
+            return [{
+                "start_time": start,
+                "end_time": end,
+                "title": "clip"
+            }]
+
+        return ranges_func
 
     def _translate_error(self, error: str) -> str:
         error_lower = error.lower()

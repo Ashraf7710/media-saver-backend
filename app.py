@@ -77,6 +77,9 @@ def extract_media():
         }), 400
 
     url = data["url"].strip()
+    start_time = data.get("start_time")
+    end_time = data.get("end_time")
+    
     if not url.startswith(("http://", "https://")):
         return jsonify({
             "status":  "error",
@@ -92,8 +95,10 @@ def extract_media():
         return jsonify({"status": "success", "data": cached})
 
     try:
-        result = extractor.extract(url)
-        cache.put(cache_key, result)
+        result = extractor.extract(url, start_time=start_time, end_time=end_time)
+        # لا نحفظ في Cache إذا كان مقصوص
+        if not start_time and not end_time:
+            cache.put(cache_key, result)
         stats["successful_extractions"] += 1
         result["from_cache"] = False
         return jsonify({"status": "success", "data": result})
