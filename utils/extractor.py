@@ -159,6 +159,7 @@ class MediaExtractor:
 
         qualities = self._extract_qualities(info)
         audio_only = self._extract_audio(info)
+        subtitles = self._extract_subtitles(info)
 
         # إذا Instagram/TikTok/Facebook: استخدم الرابط المباشر دائماً
         direct_url = info.get("url")
@@ -209,6 +210,8 @@ class MediaExtractor:
             raise Exception("لم يتم العثور على روابط تحميل")
 
         qualities.sort(key=lambda q: self.QUALITY_ORDER.get(q["quality"], 99))
+                # استخراج الترجمات
+        subtitles = self._extract_subtitles(info)
 
         return {
             "title": self._clean_title(title),
@@ -219,6 +222,7 @@ class MediaExtractor:
             "description": description[:500] if description else "",
             "qualities": qualities,
             "audio_only": audio_only,
+            "subtitles": subtitles,
         }
 
     def _extract_qualities(self, info: Dict) -> List[Dict]:
@@ -424,11 +428,6 @@ class MediaExtractor:
             "opus": "Opus", "vorbis": "Vorbis",
         }.get(codec, codec.upper())
 
-    def _clean_title(self, title: str) -> str:
-        title = re.sub(r'[<>:"/\\|?*]', '', title)
-        title = re.sub(r'\s+', ' ', title).strip()
-        return title[:200]
-
     def _translate_error(self, error: str) -> str:
         error_lower = error.lower()
         translations = {
@@ -446,3 +445,78 @@ class MediaExtractor:
             if key in error_lower:
                 return translation
         return f"خطأ: {error[:200]}"
+
+    def _extract_subtitles(self, info: Dict) -> List[Dict]:
+        """استخراج الترجمات المتاحة"""
+        result = []
+        seen_langs = set()
+
+        manual_subs = info.get("subtitles", {}) or {}
+        auto_subs = info.get("automatic_captions", {}) or {}
+
+        all_subs = {}
+        for lang, tracks in manual_subs.items():
+            all_subs[lang] = (tracks, False)
+        for lang, tracks in auto_subs.items():
+            if lang not in all_subs:
+                all_subs[lang] = (tracks, True)
+
+        priority_langs = ["ar", "en", "en-US", "en-GB"]
+        sorted_langs = sorted(
+            all_subs.keys(),
+            key=lambda x: (priority_langs.index(x) if x in priority_langs else 999, x)
+        )
+
+        for lang in sorted_langs:
+            if lang in seen_langs:
+                continue
+            seen_langs.add(lang)
+
+            tracks, is_auto = all_subs[lang]
+            if not tracks:
+                continue
+
+            best_track = None
+            for track in tracks:
+                if track.get("ext") == "srt":
+                    best_track = track
+                    break
+            if not best_track:
+                for track in tracks:
+                    if track.get("ext") == "vtt":
+                        best_track = track
+                        break
+            if not best_track:
+                best_track = tracks[0]
+
+            if best_track and best_track.get("url"):
+                result.append({
+                    "language": lang,
+                    "language_name": self._get_language_name(lang),
+                    "url": best_track["url"],
+                    "format": best_track.get("ext", "srt"),
+                    "is_auto": is_auto,
+                })
+
+        return result[:10]
+
+    def _get_language_name(self, code: str) -> str:
+        names = {
+            "ar": "🇸🇦 العربية",
+            "en": "🇬🇧 English",
+            "en-US": "🇺🇸 English (US)",
+            "en-GB": "🇬🇧 English (UK)",
+            "es": "🇪🇸 Español",
+            "fr": "🇫🇷 Français",
+            "de": "🇩🇪 Deutsch",
+            "it": "🇮🇹 Italiano",
+            "pt": "🇵🇹 Português",
+            "ru": "🇷🇺 Русский",
+            "ja": "🇯🇵 日本語",
+            "ko": "🇰🇷 한국어",
+            "zh": "🇨🇳 中文",
+            "tr": "🇹🇷 Türkçe",
+            "hi": "🇮🇳 हिन्दी",
+            "ur": "🇵🇰 اردو",
+        }
+        return names.get(code, f"🌐 {code.upper()}")
