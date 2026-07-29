@@ -249,8 +249,7 @@ class MediaExtractor:
                 vcodec_lower = vcodec.lower()
                 is_h264 = "avc" in vcodec_lower or "h264" in vcodec_lower or "h.264" in vcodec_lower
                 if vcodec != "none" and not is_h264:
-                    continue
-                
+                    continue                
                 # قبول إذا كان فيديو أو غير معروف
                 # (بعض المنصات ترجع vcodec="none" بس الفيديو موجود)
                 is_video_format = (
