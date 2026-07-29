@@ -212,12 +212,14 @@ class MediaExtractor:
 
                 if vcodec == "none":
                     continue
-                if not height:
-                    continue
                 if ext in ("mhtml", "html"):
                     continue
 
-                quality_label = f"{height}p"
+                if height:
+                    quality_label = f"{height}p"
+                else:
+                    quality_label = f.get("format_note") or f.get("format_id") or "Default"
+
                 has_audio = acodec != "none"
                 key = f"{quality_label}_{has_audio}_{ext}"
 
@@ -240,7 +242,7 @@ class MediaExtractor:
                     "vcodec": self._simplify_codec(vcodec),
                     "acodec": self._simplify_codec(acodec) if has_audio else "none",
                     "fps": f.get("fps"),
-                    "height": height,
+                    "height": height or 0,
                     "width": f.get("width"),
                 }
 
