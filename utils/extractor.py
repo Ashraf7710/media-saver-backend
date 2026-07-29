@@ -331,8 +331,13 @@ class MediaExtractor:
             vcodec = f.get("vcodec", "none")
             acodec = f.get("acodec", "none")
             url = f.get("url")
+            ext = f.get("ext", "")
 
             if vcodec != "none" or acodec == "none" or not url:
+                continue
+            
+            # تجاهل ملفات الفيديو حتى لو vcodec=none
+            if ext in ("mp4", "webm", "mov", "mkv"):
                 continue
 
             abr = f.get("abr") or f.get("tbr") or 0
