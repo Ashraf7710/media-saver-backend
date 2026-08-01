@@ -139,7 +139,7 @@ class MediaExtractor:
         if use_cookies and os.path.exists(self.cookies_path):
             opts["cookiefile"] = self.cookies_path
 
-        opts["format"] = "best[vcodec^=avc]/best[ext=mp4]/best"
+        opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
         if platform == "youtube":
             # ✅ إعدادات YouTube - كل الجودات
