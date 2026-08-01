@@ -25,6 +25,10 @@ class MediaExtractor:
             "socket_timeout": 15,
             "retries": 2,
             "skip_download": True,
+            # ✅ تجاوز قيود العمر - كل المواقع
+            "age_limit": 99,
+            "geo_bypass": True,
+            "geo_bypass_country": "US",
             "http_headers": {
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
