@@ -142,9 +142,22 @@ class MediaExtractor:
         opts["format"] = "best[vcodec^=avc]/best[ext=mp4]/best"
 
         if platform == "youtube":
+            # ✅ إعدادات YouTube - كل الجودات
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["ios", "android", "mweb", "tv_embedded"],
+                }
+            }
+            opts["http_headers"] = {
+                **self.base_opts["http_headers"],
+                "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 14) gzip",
+                "X-YouTube-Client-Name": "3",
+                "X-YouTube-Client-Version": "19.09.37",
+            }
             proxy_url = os.environ.get("YOUTUBE_PROXY")
             if proxy_url:
                 opts["proxy"] = proxy_url
+
         elif platform == "instagram":
             opts["http_headers"] = {
                 **self.base_opts["http_headers"],
