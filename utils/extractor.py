@@ -145,7 +145,7 @@ class MediaExtractor:
             # ✅ إعدادات YouTube - كل الجودات
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["default"],
+                    "player_client": ["default", "tv", "ios", "android"],
                 }
             }
             proxy_url = os.environ.get("YOUTUBE_PROXY")
