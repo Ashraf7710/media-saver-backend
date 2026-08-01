@@ -145,15 +145,8 @@ class MediaExtractor:
             # ✅ إعدادات YouTube - كل الجودات
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["web", "android", "ios"],
-                    "player_skip": ["webpage", "configs"],
+                    "player_client": ["default"],
                 }
-            }
-            opts["http_headers"] = {
-                **self.base_opts["http_headers"],
-                "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 14) gzip",
-                "X-YouTube-Client-Name": "3",
-                "X-YouTube-Client-Version": "19.09.37",
             }
             proxy_url = os.environ.get("YOUTUBE_PROXY")
             if proxy_url:
