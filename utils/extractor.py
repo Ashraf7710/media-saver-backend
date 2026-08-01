@@ -142,13 +142,13 @@ class MediaExtractor:
         opts["format"] = "best" 
 
         if platform == "youtube":
-            # ✅ إعدادات YouTube - كل الجودات
+            # ✅ إعدادات YouTube
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["tv_embedded", "web_safari", "web"],
+                    "player_client": ["ios"],
                 }
             }
-            opts["format"] = "best[protocol!*=m3u8]/best"
+            opts["format"] = "best"
             proxy_url = os.environ.get("YOUTUBE_PROXY")
             if proxy_url:
                 opts["proxy"] = proxy_url
