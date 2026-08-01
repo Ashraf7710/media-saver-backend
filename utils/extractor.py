@@ -1,6 +1,7 @@
 import yt_dlp
 import re
 import os
+import tempfile
 from typing import Dict, List, Optional
 import logging
 
@@ -16,6 +17,19 @@ class MediaExtractor:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.cookies_path = os.path.join(base_dir, "cookies.txt")
         self.instagram_cookies_path = os.path.join(base_dir, "instagram_cookies.txt")
+
+        # 🛡️ yt-dlp يعيد كتابة ملف الكوكيز (save_cookies) عند كل استخدام فيقتصّه.
+        # لذا نخزّن المحتوى في الذاكرة ونمرّر نسخة مؤقتة لكل طلب لحماية الملف الأصلي
+        # من التلف/التعارض بين عمال gunicorn.
+        self._cookies_cache = {}
+        for path in (self.cookies_path, self.instagram_cookies_path):
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8", errors="replace") as f:
+                        self._cookies_cache[os.path.abspath(path)] = f.read()
+                except Exception:
+                    self._cookies_cache[os.path.abspath(path)] = ""
+        self._temp_cookie_files: List[str] = []
 
         self.base_opts = {
             "quiet": True,
@@ -60,30 +74,47 @@ class MediaExtractor:
         url = self._clean_url(url)
         platform = self._detect_platform(url)
 
+        attempts = self._build_attempts(platform)
+        last_error = None
+
         try:
-            opts = self._get_platform_opts(platform, use_cookies=True)
-
-            if start_time or end_time:
-                opts["download_ranges"] = self._build_ranges(start_time, end_time)
-                opts["force_keyframes_at_cuts"] = True
-
-            return self._do_extract(url, opts, platform)
-        except Exception as e:
-            error_msg = str(e).lower()
-            logger.warning(f"First attempt failed: {error_msg[:200]}")
-
-            if platform == "youtube":
+            for name, use_cookies, client in attempts:
                 try:
-                    logger.info("Retrying without cookies...")
-                    opts = self._get_platform_opts(platform, use_cookies=False)
+                    logger.info(f"Attempt [{name}] {url[:80]}")
+                    opts = self._get_platform_opts(platform, use_cookies=use_cookies, client=client)
+
                     if start_time or end_time:
                         opts["download_ranges"] = self._build_ranges(start_time, end_time)
                         opts["force_keyframes_at_cuts"] = True
-                    return self._do_extract(url, opts, platform)
-                except Exception as e2:
-                    raise Exception(self._translate_error(str(e2)))
 
-            raise Exception(self._translate_error(str(e)))
+                    return self._do_extract(url, opts, platform)
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"Attempt [{name}] failed: {str(e)[:200]}")
+        finally:
+            self._cleanup_temp_cookies()
+
+        raise Exception(self._translate_error(str(last_error)))
+
+    def _build_attempts(self, platform: str) -> List[tuple]:
+        if platform == "youtube":
+            return [
+                ("youtube-default-client+cookies", True, "default"),
+                ("youtube-default-client-no-cookies", False, "default"),
+                ("youtube-android-client-no-cookies", False, "android"),
+                ("youtube-tv-client-no-cookies", False, "tv"),
+            ]
+        if platform == "instagram":
+            return [
+                ("instagram-web+cookies", True, "default"),
+                ("instagram-web_embedded", False, "web_embedded"),
+                ("instagram-mobile", False, "mobile"),
+                ("instagram-app", False, "app"),
+            ]
+        return [
+            (f"{platform}-default+cookies", True, "default"),
+            (f"{platform}-no-cookies", False, "default"),
+        ]
 
     def _do_extract(self, url: str, opts: Dict, platform: str) -> Dict:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -111,8 +142,27 @@ class MediaExtractor:
             r'youtube\.com/shorts/([a-zA-Z0-9_-]+)',
             r'youtube.com/watch?v=\1', url
         )
-        url = re.sub(r'\?igsh=[^&]*', '', url)
-        url = re.sub(r'[?&](utm_[^&]*|si=[^&]*|feature=[^&]*)', '', url)
+        # ✅ إزالة معاملات التتبع من Instagram
+        url = re.sub(r'[?&](igsh=[^&]*|utm_[^&]*|si=[^&]*|feature=[^&]*)', '', url)
+        url = re.sub(r'\?$', '', url)
+
+        # ✅ تطبيع روابط Instagram
+        if "instagram.com" in url or "instagr.am" in url:
+            url = url.replace("m.instagram.com", "www.instagram.com")
+            # instagram.com/USER/p/CODE/ → instagram.com/p/CODE/
+            url = re.sub(
+                r'(?:https?://(?:www\.)?instagram\.com)/[A-Za-z0-9._]+/p/([A-Za-z0-9_-]+)',
+                r'https://www.instagram.com/p/\1', url
+            )
+            # /reels/CODE/ (جمع) → /reel/CODE/
+            url = re.sub(
+                r'instagram\.com/reels/([A-Za-z0-9_-]+)',
+                r'instagram.com/reel/\1', url
+            )
+            # روابط /share/ → لا يمكن استخراجها مباشرة
+            if "instagram.com/share/" in url:
+                raise Exception("افتح الرابط في المتصفح ثم انسخ رابط الصفحة النهائي")
+
         return url
 
     def _detect_platform(self, url: str) -> str:
@@ -136,38 +186,73 @@ class MediaExtractor:
                 return platform
         return "other"
 
-    def _get_platform_opts(self, platform: str, use_cookies: bool = True) -> Dict:
+    def _cookie_file(self, path: str) -> Optional[str]:
+        raw = self._cookies_cache.get(os.path.abspath(path))
+        if not raw:
+            return None
+        fd, tmp = tempfile.mkstemp(prefix="ms_cookies_", suffix=".txt")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(raw)
+        self._temp_cookie_files.append(tmp)
+        return tmp
+
+    def _cleanup_temp_cookies(self):
+        for tmp in self._temp_cookie_files:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        self._temp_cookie_files.clear()
+
+    def _get_platform_opts(self, platform: str, use_cookies: bool = True, client: str = "default") -> Dict:
         opts = {**self.base_opts}
 
-        if use_cookies and os.path.exists(self.cookies_path):
-            opts["cookiefile"] = self.cookies_path
+        if use_cookies:
+            cf = self._cookie_file(self.cookies_path)
+            if cf:
+                opts["cookiefile"] = cf
 
-        opts["format"] = "best" 
+        opts["format"] = "best"
 
         if platform == "youtube":
             # ✅ إعدادات YouTube
-            opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["ios"],
+            # لا نفرض iOS client لأنه يكسر تنسيق الفيديو في الإصدارات الجديدة
+            if client == "default":
+                opts.pop("extractor_args", None)
+            else:
+                opts["extractor_args"] = {
+                    "youtube": {
+                        "player_client": [client],
+                    }
                 }
-            }
-            opts["format"] = "best"
-            proxy_url = os.environ.get("YOUTUBE_PROXY")
-            if proxy_url:
-                opts["proxy"] = proxy_url
+            opts["format"] = "bestvideo*+bestaudio/best"
+            # الـ proxy فقط في المحاولة الأولى (عند استخدام الكوكيز)
+            if use_cookies:
+                proxy_url = os.environ.get("YOUTUBE_PROXY")
+                if proxy_url:
+                    opts["proxy"] = proxy_url
 
         elif platform == "instagram":
             opts["http_headers"] = {
                 **self.base_opts["http_headers"],
                 "X-IG-App-ID": "936619743392459",
             }
+            # ✅ اختيار Web Client (يساعد في تجاوز الحجب)
+            if client != "default":
+                opts["extractor_args"] = {
+                    "instagram": {
+                        "web_client": [client],
+                    }
+                }
             # ✅ دعم الصور والفيديوهات المتعددة
             opts["format"] = "best"
             # ✅ استخراج كل عناصر الـ Carousel
             opts["extract_flat"] = False
             # ✅ استخدام cookies Instagram للـ Stories
-            if os.path.exists(self.instagram_cookies_path):
-                opts["cookiefile"] = self.instagram_cookies_path
+            if use_cookies:
+                cf = self._cookie_file(self.instagram_cookies_path)
+                if cf:
+                    opts["cookiefile"] = cf
         elif platform == "tiktok":
             opts["format"] = "best[format_id*=nowatermark]/best[vcodec^=avc]/best[ext=mp4]/best"
 
@@ -555,6 +640,16 @@ class MediaExtractor:
             "geo restricted": "غير متاح في منطقتك",
             "live stream": "البث المباشر غير مدعوم",
             "unsupported url": "هذا رابط غير مدعوم",
+            "empty media response": "المنشور غير متاح أو تم حذفه، أو يجب تسجيل الدخول لإنستغرام",
+            "login required": "يتطلب تسجيل الدخول لإنستغرام",
+            "could not find": "لم يتم العثور على المحتوى",
+            "requested format is not available": "جودة الفيديو غير متاحة حالياً، جرّب رابطاً آخر",
+            "no formats": "لا توجد صيغ متاحة لهذا الفيديو",
+            "is not a valid url": "الرابط غير صالح",
+            "http error 403": "الموقع حظر الطلب، حاول لاحقاً",
+            "http error 429": "الموقع حظر الطلب بسبب التكرار، حاول لاحقاً",
+            "unauthorized": "غير مصرح - تأكد من تحديث الكوكيز",
+            "story not found": "الاستوري غير متاح أو انتهى وقتها",
         }
         for key, translation in translations.items():
             if key in error_lower:
