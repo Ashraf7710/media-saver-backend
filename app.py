@@ -5,7 +5,7 @@ import hashlib
 import logging
 import os
 
-from utils.extractor import MediaExtractor
+from utils.extractor import MediaExtractor, ExtractionFailed
 from utils.cache import SimpleCache
 from utils.rate_limiter import RateLimiter
 
@@ -16,7 +16,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 extractor    = MediaExtractor()
-cache        = SimpleCache(max_size=500, ttl_hours=6)
+# TTL 2 ساعة فقط لأن روابط التحميل المباشرة (googlevideo...) تنتهي بعد ~6 ساعات
+cache        = SimpleCache(max_size=500, ttl_hours=2)
 rate_limiter = RateLimiter(max_requests_per_minute=30, max_requests_per_hour=200)
 
 stats = {
@@ -59,7 +60,12 @@ def platforms():
 def extract_media():
     stats["total_requests"] += 1
 
-    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    # IP الحقيقي خلف بروكسي Render (Fly-Client-IP) - X-Forwarded-For قابل للتزوير
+    client_ip = (
+        request.headers.get("Fly-Client-IP")
+        or (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        or request.remote_addr
+    )
     if not rate_limiter.allow_request(client_ip):
         return jsonify({
             "status":      "error",
@@ -102,6 +108,15 @@ def extract_media():
         stats["successful_extractions"] += 1
         result["from_cache"] = False
         return jsonify({"status": "success", "data": result})
+
+    except ExtractionFailed as e:
+        stats["failed_extractions"] += 1
+        logger.error(f"Extraction failed ({e.error_type}): {e}")
+        return jsonify({
+            "status":  "error",
+            "error":   e.error_type,
+            "message": str(e)
+        }), 400
 
     except Exception as e:
         stats["failed_extractions"] += 1

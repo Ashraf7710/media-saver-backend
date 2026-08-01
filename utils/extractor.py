@@ -7,6 +7,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+class ExtractionFailed(Exception):
+    """Exception carrying a machine-readable error type alongside the Arabic message."""
+    def __init__(self, message: str, error_type: str = "extraction_failed"):
+        super().__init__(message)
+        self.error_type = error_type
+
 class MediaExtractor:
     QUALITY_ORDER = {
         "4320p": 1, "2160p": 2, "1440p": 3, "1080p": 4,
@@ -94,7 +100,30 @@ class MediaExtractor:
         finally:
             self._cleanup_temp_cookies()
 
-        raise Exception(self._translate_error(str(last_error)))
+        raw_error = str(last_error)
+        raise ExtractionFailed(self._translate_error(raw_error), self._classify_error(raw_error))
+
+    def _classify_error(self, error: str) -> str:
+        e = error.lower()
+        if any(k in e for k in ("private", "login required", "sign in", "logged out")):
+            return "private_content"
+        if any(k in e for k in ("not found", "404", "could not find", "empty media response")):
+            return "not_found"
+        if any(k in e for k in ("geo restricted", "country")):
+            return "geo_restricted"
+        if any(k in e for k in ("copyright", "removed")):
+            return "copyright"
+        if any(k in e for k in ("age-restricted", "age restricted", "age gated")):
+            return "age_restricted"
+        if any(k in e for k in ("live stream", "is live")):
+            return "live_stream"
+        if any(k in e for k in ("unsupported url", "not a valid url", "unsupported")):
+            return "unsupported_platform"
+        if "http error 403" in e:
+            return "rate_limited"
+        if "http error 429" in e or "too many" in e:
+            return "rate_limited"
+        return "extraction_failed"
 
     def _build_attempts(self, platform: str) -> List[tuple]:
         if platform == "youtube":
