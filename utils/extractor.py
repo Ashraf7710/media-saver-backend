@@ -157,6 +157,10 @@ class MediaExtractor:
                 **self.base_opts["http_headers"],
                 "X-IG-App-ID": "936619743392459",
             }
+            # ✅ دعم الصور والفيديوهات المتعددة
+            opts["format"] = "best"
+            # ✅ استخراج كل عناصر الـ Carousel
+            opts["extract_flat"] = False
         elif platform == "tiktok":
             opts["format"] = "best[format_id*=nowatermark]/best[vcodec^=avc]/best[ext=mp4]/best"
 
@@ -172,9 +176,85 @@ class MediaExtractor:
         qualities = self._extract_qualities(info)
         audio_only = self._extract_audio(info)
         subtitles = self._extract_subtitles(info)
-
         direct_url = info.get("url")
-        if direct_url and platform in ("instagram", "tiktok", "facebook", "twitter"):
+
+        # ✅ معالجة Instagram - صور مفردة، Carousel، فيديوهات
+        if platform == "instagram":
+            # فحص إذا كان Carousel (صور/فيديوهات متعددة)
+            entries = info.get("entries", [])
+
+            if entries and len(entries) > 0:
+                # Carousel - عدة عناصر
+                qualities = []
+                for idx, entry in enumerate(entries, 1):
+                    entry_url = entry.get("url") or entry.get("webpage_url")
+                    if not entry_url:
+                        # جرب formats
+                        entry_formats = entry.get("formats", [])
+                        if entry_formats:
+                            entry_url = entry_formats[-1].get("url")
+
+                    if entry_url:
+                        is_video = entry.get("vcodec", "none") != "none" or entry.get("ext") in ("mp4", "webm")
+                        ext = entry.get("ext", "jpg" if not is_video else "mp4")
+
+                        qualities.append({
+                            "quality": f"عنصر {idx}",
+                            "url": entry_url,
+                            "format": ext,
+                            "filesize": entry.get("filesize") or entry.get("filesize_approx") or 0,
+                            "has_audio": is_video,
+                            "vcodec": entry.get("vcodec", "none"),
+                            "acodec": entry.get("acodec", "none"),
+                            "fps": entry.get("fps"),
+                            "height": entry.get("height", 0),
+                            "width": entry.get("width", 0),
+                            "media_type": "video" if is_video else "image",
+                        })
+
+                # إضافة خيار تحميل الكل
+                if len(qualities) > 1:
+                    qualities.insert(0, {
+                        "quality": f"📦 تحميل الكل ({len(qualities)} عنصر)",
+                        "url": "MULTI_DOWNLOAD",
+                        "format": "mixed",
+                        "filesize": sum(q.get("filesize", 0) for q in qualities),
+                        "has_audio": True,
+                        "vcodec": "mixed",
+                        "acodec": "mixed",
+                        "media_type": "multi",
+                    })
+
+            elif direct_url:
+                # صورة أو فيديو مفرد
+                is_video = info.get("vcodec", "none") != "none" or info.get("ext") in ("mp4", "webm")
+                ext = info.get("ext", "jpg" if not is_video else "mp4")
+                height = info.get("height", 0)
+                width = info.get("width", 0)
+
+                quality_label = f"{height}p" if height and is_video else ("📷 صورة" if not is_video else "HD")
+
+                filesize = info.get("filesize") or info.get("filesize_approx") or 0
+                if not filesize and duration and is_video:
+                    tbr = info.get("tbr") or 0
+                    if tbr:
+                        filesize = int((tbr * 1000 / 8) * duration)
+
+                qualities = [{
+                    "quality": quality_label,
+                    "url": direct_url,
+                    "format": ext,
+                    "filesize": filesize,
+                    "has_audio": is_video,
+                    "vcodec": info.get("vcodec", "h264" if is_video else "none"),
+                    "acodec": info.get("acodec", "aac" if is_video else "none"),
+                    "fps": info.get("fps"),
+                    "height": height,
+                    "width": width,
+                    "media_type": "video" if is_video else "image",
+                }]
+
+        elif direct_url and platform in ("tiktok", "facebook", "twitter"):
             has_audio = info.get("acodec", "none") != "none"
             height = info.get("height", 0)
             width = info.get("width", 0)
