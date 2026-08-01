@@ -139,17 +139,16 @@ class MediaExtractor:
         if use_cookies and os.path.exists(self.cookies_path):
             opts["cookiefile"] = self.cookies_path
 
-        opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+        opts["format"] = "best" 
 
         if platform == "youtube":
             # ✅ إعدادات YouTube - كل الجودات
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["mweb", "tv_simply", "tv_embedded"],
-                    "player_skip": ["configs", "webpage"],
-                    "formats": "missing_pot",
+                    "player_client": ["tv_embedded", "web_safari", "web"],
                 }
             }
+            opts["format"] = "best[protocol!*=m3u8]/best"
             proxy_url = os.environ.get("YOUTUBE_PROXY")
             if proxy_url:
                 opts["proxy"] = proxy_url
