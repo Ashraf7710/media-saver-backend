@@ -145,7 +145,8 @@ class MediaExtractor:
             # ✅ إعدادات YouTube - كل الجودات
             opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["ios", "android", "mweb", "tv_embedded"],
+                    "player_client": ["web", "android", "ios"],
+                    "player_skip": ["webpage", "configs"],
                 }
             }
             opts["http_headers"] = {
