@@ -13,10 +13,9 @@ class MediaExtractor:
     }
 
     def __init__(self):
-        self.cookies_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "cookies.txt"
-        )
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.cookies_path = os.path.join(base_dir, "cookies.txt")
+        self.instagram_cookies_path = os.path.join(base_dir, "instagram_cookies.txt")
 
         self.base_opts = {
             "quiet": True,
@@ -162,6 +161,9 @@ class MediaExtractor:
             opts["format"] = "best"
             # ✅ استخراج كل عناصر الـ Carousel
             opts["extract_flat"] = False
+            # ✅ استخدام cookies Instagram للـ Stories
+            if os.path.exists(self.instagram_cookies_path):
+                opts["cookiefile"] = self.instagram_cookies_path
         elif platform == "tiktok":
             opts["format"] = "best[format_id*=nowatermark]/best[vcodec^=avc]/best[ext=mp4]/best"
 
