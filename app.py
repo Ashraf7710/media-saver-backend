@@ -131,6 +131,8 @@ def extract_media():
 
 def _classify_error(error: str) -> str:
     e = error.lower()
+    if "not a bot" in e or "bot check" in e or "too many requests" in e:
+        return "bot_check"
     if "private"   in e or "login"   in e: return "private_content"
     if "not found" in e or "404"     in e: return "not_found"
     if "geo"       in e or "country" in e: return "geo_restricted"

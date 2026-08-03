@@ -3,9 +3,14 @@ import re
 import os
 import tempfile
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 import logging
 
 logger = logging.getLogger(__name__)
+
+IMAGE_EXTS = ("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "svg", "heic", "jfif")
+AUDIO_EXTS = ("mp3", "m4a", "aac", "ogg", "opus", "wav", "flac", "wma", "oga", "mid", "midi")
+VIDEO_EXTS = ("mp4", "webm", "mkv", "mov", "avi", "flv", "3gp", "m4v", "ogv", "ts", "mpeg", "mpg")
 
 class ExtractionFailed(Exception):
     """Exception carrying a machine-readable error type alongside the Arabic message."""
@@ -78,6 +83,11 @@ class MediaExtractor:
     def extract(self, url: str, preferred_quality: str = "best",
                 start_time: str = None, end_time: str = None) -> Dict:
         url = self._clean_url(url)
+
+        direct = self._direct_media_info(url)
+        if direct:
+            return direct
+
         platform = self._detect_platform(url)
 
         attempts = self._build_attempts(platform)
@@ -105,6 +115,8 @@ class MediaExtractor:
 
     def _classify_error(self, error: str) -> str:
         e = error.lower()
+        if any(k in e for k in ("confirm you're not a bot", "not a bot", "bot check", "too many requests")):
+            return "bot_check"
         if any(k in e for k in ("private", "login required", "sign in", "logged out")):
             return "private_content"
         if any(k in e for k in ("not found", "404", "could not find", "empty media response")):
@@ -129,9 +141,11 @@ class MediaExtractor:
         if platform == "youtube":
             return [
                 ("youtube-default-client+cookies", True, "default"),
-                ("youtube-default-client-no-cookies", False, "default"),
+                ("youtube-android-vr-no-cookies", False, "android_vr"),
                 ("youtube-android-client-no-cookies", False, "android"),
                 ("youtube-tv-client-no-cookies", False, "tv"),
+                ("youtube-web_embedded-no-cookies", False, "web_embedded"),
+                ("youtube-default-client-no-cookies", False, "default"),
             ]
         if platform == "instagram":
             return [
@@ -152,7 +166,8 @@ class MediaExtractor:
         if not info:
             raise Exception("لم يتم العثور على محتوى")
 
-        if info.get("_type") == "playlist":
+        if info.get("_type") == "playlist" and platform != "instagram":
+            # Instagram carousels جاية كـ playlist؛ نُبقيها لاستخراج كل العناصر
             entries = info.get("entries", [])
             if entries:
                 info = entries[0]
@@ -215,6 +230,82 @@ class MediaExtractor:
                 return platform
         return "other"
 
+    @staticmethod
+    def _url_extension(url: str) -> Optional[str]:
+        try:
+            path = urlparse(url).path
+        except Exception:
+            return None
+        if not path:
+            return None
+        ext = os.path.splitext(path)[1].lstrip(".").lower()
+        return ext or None
+
+    @staticmethod
+    def _classify_media(ext: Optional[str], vcodec: str = "none",
+                        acodec: str = "none", height: int = 0,
+                        url: str = "") -> str:
+        if ext in IMAGE_EXTS:
+            return "image"
+        if ext in AUDIO_EXTS:
+            return "audio"
+        if vcodec != "none" or height:
+            return "video"
+        if acodec != "none":
+            return "audio"
+        if ext in VIDEO_EXTS:
+            return "video"
+        if url and any(u in url.lower() for u in (".cdninstagram.", ".fbcdn.", "scontent")):
+            return "image"
+        return "video"
+
+    def _direct_media_info(self, url: str) -> Optional[Dict]:
+        ext = self._url_extension(url)
+        if not ext or ext not in IMAGE_EXTS + AUDIO_EXTS + VIDEO_EXTS:
+            return None
+
+        media_type = self._classify_media(ext)
+        basename = os.path.basename(urlparse(url).path)
+        title = self._clean_title(os.path.splitext(basename)[0] if basename else "media")
+
+        if media_type == "image":
+            label, has_audio = "صورة", False
+        elif media_type == "audio":
+            label, has_audio = "Audio", True
+        else:
+            label, has_audio = "HD", True
+
+        return {
+            "title": title or "media",
+            "thumbnail": "",
+            "duration": 0,
+            "platform": "Other",
+            "uploader": "",
+            "description": "",
+            "qualities": [{
+                "quality": label,
+                "url": url,
+                "format": ext,
+                "filesize": 0,
+                "has_audio": has_audio,
+                "vcodec": "none" if media_type != "video" else "h264",
+                "acodec": "none" if media_type == "image" else "aac",
+                "fps": None,
+                "height": 0,
+                "width": 0,
+                "media_type": media_type,
+            }],
+            "audio_only": [{
+                "quality": "Audio",
+                "url": url,
+                "format": ext,
+                "filesize": 0,
+                "abr": 0,
+                "acodec": "aac",
+            }] if media_type == "audio" else [],
+            "subtitles": [],
+        }
+
     def _cookie_file(self, path: str) -> Optional[str]:
         raw = self._cookies_cache.get(os.path.abspath(path))
         if not raw:
@@ -245,15 +336,17 @@ class MediaExtractor:
 
         if platform == "youtube":
             # ✅ إعدادات YouTube
-            # لا نفرض iOS client لأنه يكسر تنسيق الفيديو في الإصدارات الجديدة
-            if client == "default":
+            po_token = os.environ.get("YOUTUBE_PO_TOKEN", "").strip()
+            if client == "default" and not po_token:
                 opts.pop("extractor_args", None)
             else:
-                opts["extractor_args"] = {
-                    "youtube": {
-                        "player_client": [client],
-                    }
-                }
+                extractor_args: Dict[str, Dict] = {"youtube": {}}
+                if client != "default":
+                    extractor_args["youtube"]["player_client"] = [client]
+                if po_token:
+                    # مثال: "ios.gvs+xxx" أو اسم مزوّد PO Token
+                    extractor_args["youtube"]["po_token"] = po_token
+                opts["extractor_args"] = extractor_args
             opts["format"] = "bestvideo*+bestaudio/best"
             # الـ proxy فقط في المحاولة الأولى (عند استخدام الكوكيز)
             if use_cookies:
@@ -277,6 +370,8 @@ class MediaExtractor:
             opts["format"] = "best"
             # ✅ استخراج كل عناصر الـ Carousel
             opts["extract_flat"] = False
+            # ✅ منشورات الصور المفردة: السماح بالعودة بالصور (بدون رفع خطأ no-video)
+            opts["ignore_no_formats_error"] = True
             # ✅ استخدام cookies Instagram للـ Stories
             if use_cookies:
                 cf = self._cookie_file(self.instagram_cookies_path)
@@ -306,6 +401,8 @@ class MediaExtractor:
 
             if entries and len(entries) > 0:
                 # Carousel - عدة عناصر
+                if not thumbnail and entries[0].get("thumbnail"):
+                    thumbnail = entries[0]["thumbnail"]
                 qualities = []
                 for idx, entry in enumerate(entries, 1):
                     entry_url = entry.get("url") or entry.get("webpage_url")
@@ -315,9 +412,26 @@ class MediaExtractor:
                         if entry_formats:
                             entry_url = entry_formats[-1].get("url")
 
+                    entry_is_image = False
+                    entry_thumb = None
+                    if not entry_url:
+                        # عنصر صورة: أعلى دقة من thumbnails
+                        entry_thumbs = [t for t in entry.get("thumbnails", []) if t.get("url")]
+                        if entry_thumbs:
+                            entry_thumb = max(entry_thumbs, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
+                            entry_url = entry_thumb.get("url")
+                            entry_is_image = True
+
                     if entry_url:
                         is_video = entry.get("vcodec", "none") != "none" or entry.get("ext") in ("mp4", "webm")
-                        ext = entry.get("ext", "jpg" if not is_video else "mp4")
+                        if entry_is_image:
+                            is_video = False
+                        ext = "jpg" if (entry_is_image or not is_video) else "mp4"
+                        h = entry.get("height", 0)
+                        w = entry.get("width", 0)
+                        if entry_thumb:
+                            h = entry_thumb.get("height") or h
+                            w = entry_thumb.get("width") or w
 
                         qualities.append({
                             "quality": f"عنصر {idx}",
@@ -328,8 +442,8 @@ class MediaExtractor:
                             "vcodec": entry.get("vcodec", "none"),
                             "acodec": entry.get("acodec", "none"),
                             "fps": entry.get("fps"),
-                            "height": entry.get("height", 0),
-                            "width": entry.get("width", 0),
+                            "height": h,
+                            "width": w,
                             "media_type": "video" if is_video else "image",
                         })
 
@@ -346,12 +460,27 @@ class MediaExtractor:
                         "media_type": "multi",
                     })
 
-            elif direct_url:
+            elif direct_url or info.get("thumbnails"):
                 # صورة أو فيديو مفرد
                 is_video = info.get("vcodec", "none") != "none" or info.get("ext") in ("mp4", "webm")
-                ext = info.get("ext", "jpg" if not is_video else "mp4")
                 height = info.get("height", 0)
                 width = info.get("width", 0)
+
+                media_url = direct_url
+                if not media_url:
+                    # منشور صورة: أعلى دقة من الصور المتاحة
+                    thumbs = [t for t in info.get("thumbnails", []) if t.get("url")]
+                    if not thumbs:
+                        raise Exception("لم يتم العثور على روابط تحميل لهذا المنشور")
+                    best_thumb = max(thumbs, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
+                    media_url = best_thumb.get("url")
+                    height = best_thumb.get("height") or height
+                    width = best_thumb.get("width") or width
+                    is_video = False
+
+                ext = info.get("ext", "jpg" if not is_video else "mp4")
+                if not is_video:
+                    ext = "jpg"
 
                 quality_label = f"{height}p" if height and is_video else ("📷 صورة" if not is_video else "HD")
 
@@ -363,7 +492,7 @@ class MediaExtractor:
 
                 qualities = [{
                     "quality": quality_label,
-                    "url": direct_url,
+                    "url": media_url,
                     "format": ext,
                     "filesize": filesize,
                     "has_audio": is_video,
@@ -404,17 +533,35 @@ class MediaExtractor:
         if not qualities:
             direct_url = info.get("url")
             if direct_url:
+                vcodec = info.get("vcodec") or "none"
+                acodec = info.get("acodec") or "none"
+                height = info.get("height") or 0
+                url_ext = self._url_extension(direct_url) or info.get("ext") or ""
+                media_type = self._classify_media(url_ext, vcodec, acodec, height, direct_url)
+
+                if media_type == "image":
+                    ext, has_audio, label = url_ext or "jpg", False, "صورة"
+                    vcodec, acodec = "none", "none"
+                elif media_type == "audio":
+                    ext, has_audio, label = url_ext or "mp3", True, "Audio"
+                    vcodec = "none"
+                else:
+                    ext = url_ext or info.get("ext") or "mp4"
+                    has_audio = acodec != "none"
+                    label = f"{height}p" if height else "HD"
+
                 qualities = [{
-                    "quality": "Default",
+                    "quality": label,
                     "url": direct_url,
-                    "format": info.get("ext", "mp4"),
+                    "format": ext,
                     "filesize": info.get("filesize", 0),
-                    "has_audio": True,
-                    "vcodec": info.get("vcodec", "unknown"),
-                    "acodec": info.get("acodec", "unknown"),
+                    "has_audio": has_audio,
+                    "vcodec": vcodec,
+                    "acodec": acodec,
                     "fps": info.get("fps"),
-                    "height": info.get("height", 0),
+                    "height": height,
                     "width": info.get("width", 0),
+                    "media_type": media_type,
                 }]
 
         if not qualities:
@@ -442,7 +589,6 @@ class MediaExtractor:
         duration = info.get("duration", 0)
         qualities = []
         seen = set()
-        best_audio = self._find_best_audio(formats)
 
         for f in formats:
             try:
@@ -459,6 +605,10 @@ class MediaExtractor:
                     continue
 
                 if vcodec == "none" and acodec != "none":
+                    continue
+
+                # 🚫 استبعاد AV1: التطبيق لا يستطيع دمج/تشغيله بعد
+                if "av01" in vcodec.lower() or self._simplify_codec(vcodec) == "AV1":
                     continue
 
                 is_video_format = (
@@ -504,18 +654,22 @@ class MediaExtractor:
                     "fps": f.get("fps"),
                     "height": height or 0,
                     "width": f.get("width"),
+                    "media_type": "video",
                 }
 
-                if not has_audio and best_audio:
-                    audio_size = best_audio.get("filesize") or best_audio.get("filesize_approx") or 0
-                    if not audio_size and duration:
-                        abr = best_audio.get("abr") or best_audio.get("tbr") or 0
-                        if abr:
-                            audio_size = int((abr * 1000 / 8) * duration)
+                if not has_audio:
+                    # صوت متوافق مع حاوية الفيديو (Opus لـ webm، AAC لـ mp4)
+                    best_audio = self._find_best_audio(formats, container_hint=ext)
+                    if best_audio:
+                        audio_size = best_audio.get("filesize") or best_audio.get("filesize_approx") or 0
+                        if not audio_size and duration:
+                            abr = best_audio.get("abr") or best_audio.get("tbr") or 0
+                            if abr:
+                                audio_size = int((abr * 1000 / 8) * duration)
 
-                    q["audio_url"] = best_audio["url"]
-                    q["audio_format"] = best_audio.get("ext", "m4a")
-                    q["audio_filesize"] = audio_size
+                        q["audio_url"] = best_audio["url"]
+                        q["audio_format"] = best_audio.get("ext", "m4a")
+                        q["audio_filesize"] = audio_size
 
                 qualities.append(q)
             except Exception as ex:
@@ -602,7 +756,7 @@ class MediaExtractor:
         result.sort(key=lambda x: x.get("abr", 0), reverse=True)
         return result[:5]
 
-    def _find_best_audio(self, formats: List[Dict]) -> Optional[Dict]:
+    def _find_best_audio(self, formats: List[Dict], container_hint: str = "mp4") -> Optional[Dict]:
         audio = [
             f for f in formats
             if f.get("vcodec", "none") == "none"
@@ -612,6 +766,11 @@ class MediaExtractor:
         if not audio:
             return None
         audio.sort(key=lambda x: x.get("abr") or x.get("tbr") or 0, reverse=True)
+        # فيديو WebM (VP9) يحتاج صوت Opus/Vorbis في نفس الحاوية
+        if container_hint == "webm":
+            for f in audio:
+                if f.get("ext") == "webm":
+                    return f
         for f in audio:
             if f.get("ext") in ("m4a", "mp4"):
                 return f
@@ -662,6 +821,8 @@ class MediaExtractor:
         translations = {
             "video unavailable": "الفيديو غير متاح",
             "private video": "هذا فيديو خاص",
+            "confirm you're not a bot": "يوتيوب يطلب تأكيد أنك لست بوتاً - جارٍ تجربة عميل مختلف",
+            "not a bot": "يوتيوب يطلب تأكيد أنك لست بوتاً - جارٍ تجربة عميل مختلف",
             "sign in": "يتطلب تسجيل الدخول",
             "age-restricted": "محتوى مقيد بالعمر",
             "copyright": "تم إزالته بسبب حقوق النشر",
@@ -672,6 +833,8 @@ class MediaExtractor:
             "empty media response": "المنشور غير متاح أو تم حذفه، أو يجب تسجيل الدخول لإنستغرام",
             "login required": "يتطلب تسجيل الدخول لإنستغرام",
             "could not find": "لم يتم العثور على المحتوى",
+            "there is no video in this post": "هذا منشور صورة - جارٍ جلب الصورة",
+            "no video formats": "هذا منشور صورة - جارٍ جلب الصورة",
             "requested format is not available": "جودة الفيديو غير متاحة حالياً، جرّب رابطاً آخر",
             "no formats": "لا توجد صيغ متاحة لهذا الفيديو",
             "is not a valid url": "الرابط غير صالح",
