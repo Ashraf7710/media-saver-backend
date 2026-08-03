@@ -112,11 +112,14 @@ def extract_media():
     except ExtractionFailed as e:
         stats["failed_extractions"] += 1
         logger.error(f"Extraction failed ({e.error_type}): {e}")
-        return jsonify({
+        response = {
             "status":  "error",
             "error":   e.error_type,
             "message": str(e)
-        }), 400
+        }
+        if e.error_type == "bot_check":
+            response["retry_after"] = 600
+        return jsonify(response), 400
 
     except Exception as e:
         stats["failed_extractions"] += 1

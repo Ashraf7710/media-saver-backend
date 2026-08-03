@@ -9,3 +9,8 @@ services:
         value: "5000"
       - key: FLASK_DEBUG
         value: "false"
+      # لتجاوز حجب يوتيوب (فحص روبوت) عند الحاجة: أزل التعليق واملأ القيمة
+      # - key: YOUTUBE_PROXY
+      #   sync: false
+      # - key: YOUTUBE_PO_TOKEN
+      #   sync: false
